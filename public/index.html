@@ -76,11 +76,82 @@
   .hidden{display:none}
   .hint{margin-top:10px; font-size:13px; color:#d9e5ff; background:rgba(114,159,255,.12); border:1px solid rgba(114,159,255,.25); border-radius:12px; padding:10px}
   .smallText{color:var(--muted); font-size:13px; line-height:1.45}
+  
   .sectionTitle{font-size:18px; font-weight:700; margin:0 0 12px 0; color:#fff0b5}
+
+  .turnGlow{
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity .35s ease;
+    background:
+      radial-gradient(circle at center, rgba(255,230,130,0.14), rgba(255,230,130,0.03) 35%, transparent 60%);
+    z-index:20;
+  }
+  .turnGlow.show{opacity:1;}
+
+  .turnBanner{
+    position:fixed;
+    left:50%;
+    top:22px;
+    transform:translateX(-50%) translateY(-18px);
+    padding:14px 24px;
+    border-radius:18px;
+    background:rgba(22,28,52,0.92);
+    border:1px solid rgba(255,255,255,0.14);
+    box-shadow:0 14px 32px rgba(0,0,0,.35);
+    font-weight:800;
+    color:#fff4b8;
+    font-size:22px;
+    letter-spacing:.4px;
+    z-index:30;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .25s ease, transform .25s ease;
+  }
+  .turnBanner.show{
+    opacity:1;
+    transform:translateX(-50%) translateY(0);
+  }
+
+  .attackLayer{
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    z-index:40;
+    overflow:hidden;
+  }
+  .attackSlash{
+    position:fixed;
+    height:6px;
+    border-radius:999px;
+    background:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,245,180,1), rgba(255,255,255,0));
+    box-shadow:0 0 16px rgba(255,240,170,.85);
+    transform-origin:left center;
+    opacity:0;
+  }
+  .attackImpact{
+    position:fixed;
+    width:64px;
+    height:64px;
+    margin-left:-32px;
+    margin-top:-32px;
+    border-radius:50%;
+    border:3px solid rgba(255,240,170,.95);
+    box-shadow:0 0 22px rgba(255,240,170,.85);
+    opacity:0;
+    transform:scale(.35);
+  }
+
   @media (max-width:1100px){.board{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
+<div class="turnGlow" id="turnGlow"></div>
+<div class="turnBanner" id="turnBannerVisual">Your Turn</div>
+<div class="attackLayer" id="attackLayer"></div>
 <div class="wrap">
   <div id="menuScreen" class="screen">
     <h1>Simple Online Duel</h1>
@@ -129,13 +200,13 @@
         <div class="panel">
           <div class="sectionTitle">Actions</div>
           <div class="controls">
-            <button id="drawBtn" class="good">Draw</button>
+            <button id="drawBtn" class="good">Auto Draw</button>
             <button id="summonBtn">Summon / Cast</button>
             <button id="switchBtn" class="secondary">Switch Stance</button>
             <button id="attackBtn" class="warn">Attack</button>
             <button id="endTurnBtn" class="secondary" style="grid-column:1 / -1;">End Turn</button>
           </div>
-          <p class="smallText" style="margin-top:12px;">This is the easiest real online version: two players, one room code, browser sync through a tiny server.</p>
+          <p class="smallText" style="margin-top:12px;">This is the easiest real online version: two players, one room code, browser sync through a tiny server. Turn draw is automatic, and attacks now have visual slashes.</p>
         </div>
 
         <div class="panel">
@@ -248,6 +319,28 @@ socket.on("errorMessage", (msg) => {
   alert(msg);
 });
 
+socket.on("turnStarted", ({ playerName, autoDrawCardName, isYou }) => {
+  showTurnVisual(isYou ? "Your Turn" : playerName + "'s Turn");
+  if(autoDrawCardName){
+    const logBox = document.getElementById("log");
+    const item = document.createElement("div");
+    item.className = "logItem";
+    item.textContent = playerName + " drew a card automatically at turn start.";
+    if(logBox) logBox.prepend(item);
+  }
+});
+
+socket.on("attackVisual", async ({ attackerOwner, attackerIndex, targetIndex, direct }) => {
+  const from = getCardCenter(attackerOwner === "me" ? "mine" : "opp", attackerIndex);
+  const to = direct ? (attackerOwner === "me" ? getDirectTargetPoint() : (() => {
+    const pill = document.getElementById("meLP");
+    const rect = pill.getBoundingClientRect();
+    return { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+  })()) : getCardCenter(attackerOwner === "me" ? "opp" : "mine", targetIndex);
+  await animateAttack(from, to);
+});
+
+
 socket.on("state", (state) => {
   latestState = state;
   render();
@@ -279,11 +372,17 @@ function render(){
     document.getElementById("hintBox").textContent = "Game finished: " + latestState.winner;
   } else {
     document.getElementById("hintBox").textContent = latestState.yourTurn
-      ? "Your move. Draw, summon/cast, switch stance, attack, then end turn."
+      ? "Your move. Your card for the turn was drawn automatically. Summon/cast, switch stance, attack, then end turn."
       : "Waiting for opponent...";
   }
 
   updateButtons();
+
+  const turnKey = roomCode + "|" + (latestState.turnPlayerName || "") + "|" + (latestState.turnCount || "") + "|" + (latestState.yourTurn ? "me" : "opp");
+  if(turnKey !== seenTurnKey){
+    seenTurnKey = turnKey;
+    showTurnVisual(latestState.yourTurn ? "Your Turn" : (latestState.turnPlayerName ? latestState.turnPlayerName + "'s Turn" : "Opponent Turn"));
+  }
 }
 
 function renderField(id, field, isMine){
@@ -293,7 +392,7 @@ function renderField(id, field, isMine){
     const zone = document.createElement("div");
     zone.className = "zone" + (!card ? " empty" : "");
     if(card){
-      const el = cardElement(card);
+      const el = cardElement(card); el.dataset.fieldSide = isMine ? "mine" : "opp"; el.dataset.fieldIndex = idx;
       if(isMine && selectedMyField === idx) el.classList.add("selected");
       if(!isMine && selectedOppField === idx) el.classList.add("selected");
       if(card.position === "defense") el.classList.add("defense");
@@ -353,6 +452,82 @@ function spellText(card){
   return "";
 }
 
+
+let seenTurnKey = "";
+
+function showTurnVisual(text){
+  const banner = document.getElementById("turnBannerVisual");
+  const glow = document.getElementById("turnGlow");
+  banner.textContent = text;
+  banner.classList.add("show");
+  glow.classList.add("show");
+  setTimeout(() => banner.classList.remove("show"), 1600);
+  setTimeout(() => glow.classList.remove("show"), 1800);
+}
+
+function getCardCenter(side, index){
+  const el = document.querySelector(`.card[data-field-side="${side}"][data-field-index="${index}"]`);
+  if(!el) return null;
+  const rect = el.getBoundingClientRect();
+  return { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+}
+
+function getDirectTargetPoint(){
+  const pill = document.getElementById("oppLP");
+  const rect = pill.getBoundingClientRect();
+  return { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+}
+
+function animateAttack(from, to){
+  return new Promise(resolve => {
+    const layer = document.getElementById("attackLayer");
+    if(!from || !to || !layer){ resolve(); return; }
+
+    const slash = document.createElement("div");
+    slash.className = "attackSlash";
+    const impact = document.createElement("div");
+    impact.className = "attackImpact";
+
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+    slash.style.left = from.x + "px";
+    slash.style.top = from.y + "px";
+    slash.style.width = dist + "px";
+    slash.style.transform = `rotate(${angle}deg) scaleX(.15)`;
+    slash.style.opacity = "1";
+    slash.style.transition = "transform .32s ease, opacity .18s ease";
+
+    impact.style.left = to.x + "px";
+    impact.style.top = to.y + "px";
+    impact.style.transition = "transform .24s ease, opacity .24s ease";
+
+    layer.appendChild(slash);
+    layer.appendChild(impact);
+
+    requestAnimationFrame(() => {
+      slash.style.transform = `rotate(${angle}deg) scaleX(1)`;
+      impact.style.opacity = "1";
+      impact.style.transform = "scale(1)";
+    });
+
+    setTimeout(() => {
+      slash.style.opacity = "0";
+      impact.style.opacity = "0";
+      impact.style.transform = "scale(1.5)";
+    }, 260);
+
+    setTimeout(() => {
+      slash.remove();
+      impact.remove();
+      resolve();
+    }, 620);
+  });
+}
+
+
 function sendAction(type, extra = {}){
   if(!roomCode) return;
   socket.emit("action", { roomCode, type, ...extra });
@@ -363,14 +538,14 @@ function updateButtons(){
   const fieldCard = latestState?.me?.field?.[selectedMyField];
   const yourTurn = latestState?.yourTurn && !latestState?.winner;
 
-  document.getElementById("drawBtn").disabled = !yourTurn || latestState.me.drew;
+  document.getElementById("drawBtn").disabled = true;
   document.getElementById("summonBtn").disabled = !yourTurn || selectedHand === null;
   document.getElementById("switchBtn").disabled = !yourTurn || !fieldCard || fieldCard.type !== "monster" || fieldCard.switchedThisTurn;
   document.getElementById("attackBtn").disabled = !yourTurn || !fieldCard || fieldCard.type !== "monster" || fieldCard.position !== "attack" || fieldCard.hasAttacked;
   document.getElementById("endTurnBtn").disabled = !yourTurn;
 }
 
-document.getElementById("drawBtn").onclick = () => sendAction("draw");
+document.getElementById("drawBtn").onclick = () => {};
 
 document.getElementById("summonBtn").onclick = () => {
   const card = latestState?.me?.hand?.[selectedHand];
@@ -388,13 +563,19 @@ document.getElementById("switchBtn").onclick = () => {
   sendAction("switch", { fieldIndex: selectedMyField });
 };
 
-document.getElementById("attackBtn").onclick = () => {
+document.getElementById("attackBtn").onclick = async () => {
   if(selectedMyField === null) return;
   const oppHasCards = latestState.opp.field.some(Boolean);
   if(oppHasCards && selectedOppField === null){
     alert("Select an opponent monster first.");
     return;
   }
+
+  const from = getCardCenter("mine", selectedMyField);
+  const to = oppHasCards ? getCardCenter("opp", selectedOppField) : getDirectTargetPoint();
+
+  await animateAttack(from, to);
+
   sendAction("attack", {
     attackerIndex: selectedMyField,
     targetIndex: selectedOppField
