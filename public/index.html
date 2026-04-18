@@ -7,32 +7,33 @@
 <script src="/socket.io/socket.io.js"></script>
 <style>
   :root{
-    --bg1:#0b1220; --bg2:#1a2340; --panel:rgba(255,255,255,0.08); --line:rgba(255,255,255,0.14);
-    --gold:#e7c56d; --muted:#b8c2d9; --text:#f5f7fb;
+    --panel:rgba(255,255,255,0.08);
+    --line:rgba(255,255,255,0.14);
+    --gold:#e7c56d;
+    --muted:#b8c2d9;
+    --text:#f5f7fb;
   }
   *{box-sizing:border-box}
   body{
-  margin:0;
-  font-family:Arial, Helvetica, sans-serif;
-  color:var(--text);
-
-  background:
-    linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.7)),
-    url("images/bg.jpg");
-
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-
-  min-height:100vh;
-}
+    margin:0;
+    font-family:Arial, Helvetica, sans-serif;
+    color:var(--text);
+    background:
+      linear-gradient(rgba(0,0,0,0.60), rgba(0,0,0,0.72)),
+      url("images/bg.jpg");
+    background-size:cover;
+    background-position:center;
+    background-repeat:no-repeat;
+    background-attachment:fixed;
+    min-height:100vh;
+  }
   .wrap{max-width:1400px; margin:0 auto; padding:16px}
-  .screen, .arena, .panel{background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:16px; box-shadow:0 12px 30px rgba(0,0,0,.28)}
+  .screen,.arena,.panel{background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:16px; box-shadow:0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(8px)}
   .screen{max-width:640px; margin:48px auto}
   h1,h2{margin-top:0; color:#fff1b4}
   input{
-    width:100%; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.08); color:white; margin-bottom:12px;
+    width:100%; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.15);
+    background:rgba(255,255,255,.08); color:white; margin-bottom:12px;
   }
   button{
     border:none; border-radius:14px; padding:12px 14px; font-weight:700; cursor:pointer; color:#fff;
@@ -46,7 +47,7 @@
   .topbar{display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-bottom:16px}
   .title{font-size:28px; font-weight:800; color:#fff6d6}
   .hud{display:flex; gap:12px; flex-wrap:wrap}
-  .pill{background:var(--panel); border:1px solid var(--line); padding:10px 14px; border-radius:14px; min-width:150px}
+  .pill{background:var(--panel); border:1px solid var(--line); padding:10px 14px; border-radius:14px; min-width:150px; position:relative}
   .pill .label{color:var(--muted); font-size:12px; margin-bottom:4px}
   .pill .value{font-size:22px; font-weight:700}
   .board{display:grid; grid-template-columns:1.15fr 360px; gap:16px}
@@ -56,7 +57,7 @@
   .zone{border:1px dashed rgba(255,255,255,0.18); border-radius:18px; min-height:180px; display:flex; align-items:center; justify-content:center; padding:6px; position:relative; background:rgba(255,255,255,0.03)}
   .zone.empty::after{content:"Empty"; color:rgba(255,255,255,.28); font-size:14px}
   .hand{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px}
-  .card{width:100%; height:168px; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.25); box-shadow:0 10px 22px rgba(0,0,0,.35); display:flex; flex-direction:column; cursor:pointer; transition:transform .15s ease, box-shadow .15s ease, outline .15s ease; position:relative}
+  .card{width:100%; height:168px; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.25); box-shadow:0 10px 22px rgba(0,0,0,.35); display:flex; flex-direction:column; cursor:pointer; transition:transform .15s ease, outline .15s ease, box-shadow .15s ease; position:relative}
   .card:hover{transform:translateY(-3px)}
   .card.selected{outline:3px solid var(--gold)}
   .card.used{opacity:.55; filter:saturate(.7)}
@@ -76,86 +77,90 @@
   .hidden{display:none}
   .hint{margin-top:10px; font-size:13px; color:#d9e5ff; background:rgba(114,159,255,.12); border:1px solid rgba(114,159,255,.25); border-radius:12px; padding:10px}
   .smallText{color:var(--muted); font-size:13px; line-height:1.45}
-  
   .sectionTitle{font-size:18px; font-weight:700; margin:0 0 12px 0; color:#fff0b5}
 
   .turnGlow{
-    position:fixed;
-    inset:0;
-    pointer-events:none;
-    opacity:0;
+    position:fixed; inset:0; pointer-events:none; opacity:0; z-index:20;
     transition:opacity .35s ease;
-    background:
-      radial-gradient(circle at center, rgba(255,230,130,0.14), rgba(255,230,130,0.03) 35%, transparent 60%);
-    z-index:20;
+    background:radial-gradient(circle at center, rgba(255,230,130,0.16), rgba(255,230,130,0.03) 35%, transparent 60%);
   }
-  .turnGlow.show{opacity:1;}
-
+  .turnGlow.show{opacity:1}
   .turnBanner{
-    position:fixed;
-    left:50%;
-    top:22px;
-    transform:translateX(-50%) translateY(-18px);
-    padding:14px 24px;
-    border-radius:18px;
-    background:rgba(22,28,52,0.92);
-    border:1px solid rgba(255,255,255,0.14);
-    box-shadow:0 14px 32px rgba(0,0,0,.35);
-    font-weight:800;
-    color:#fff4b8;
-    font-size:22px;
-    letter-spacing:.4px;
-    z-index:30;
-    opacity:0;
-    pointer-events:none;
-    transition:opacity .25s ease, transform .25s ease;
+    position:fixed; left:50%; top:22px; transform:translateX(-50%) translateY(-18px);
+    padding:14px 24px; border-radius:18px; background:rgba(22,28,52,0.92);
+    border:1px solid rgba(255,255,255,0.14); box-shadow:0 14px 32px rgba(0,0,0,.35);
+    font-weight:800; color:#fff4b8; font-size:22px; letter-spacing:.4px; z-index:30;
+    opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease;
   }
-  .turnBanner.show{
-    opacity:1;
-    transform:translateX(-50%) translateY(0);
-  }
+  .turnBanner.show{opacity:1; transform:translateX(-50%) translateY(0)}
 
-  .attackLayer{
-    position:fixed;
-    inset:0;
-    pointer-events:none;
-    z-index:40;
-    overflow:hidden;
-  }
-  .attackSlash{
-    position:fixed;
-    height:6px;
-    border-radius:999px;
+  .effectLayer{position:fixed; inset:0; pointer-events:none; z-index:40; overflow:hidden}
+  .beam{
+    position:fixed; height:6px; border-radius:999px;
     background:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,245,180,1), rgba(255,255,255,0));
     box-shadow:0 0 16px rgba(255,240,170,.85);
-    transform-origin:left center;
+    transform-origin:left center; opacity:0;
+  }
+  .impact{
+    position:fixed; width:64px; height:64px; margin-left:-32px; margin-top:-32px; border-radius:50%;
+    border:3px solid rgba(255,240,170,.95); box-shadow:0 0 22px rgba(255,240,170,.85); opacity:0; transform:scale(.35);
+  }
+  .lightning{
+    position:fixed; width:12px; border-radius:999px;
+    background:linear-gradient(180deg, rgba(255,255,255,.2), rgba(153,215,255,1), rgba(255,255,255,.2));
+    box-shadow:0 0 18px rgba(120,210,255,.95);
     opacity:0;
   }
-  .attackImpact{
-    position:fixed;
-    width:64px;
-    height:64px;
-    margin-left:-32px;
-    margin-top:-32px;
-    border-radius:50%;
-    border:3px solid rgba(255,240,170,.95);
-    box-shadow:0 0 22px rgba(255,240,170,.85);
-    opacity:0;
-    transform:scale(.35);
+  .lpFloat{
+    position:fixed; font-weight:900; font-size:34px; z-index:45; opacity:0; pointer-events:none;
+    text-shadow:0 0 16px rgba(255,255,255,.35);
   }
+  .lpFloat.plus{color:#8cffb3}
+  .lpFloat.minus{color:#ff9f9f}
+
+  .spellPreview{
+    position:fixed; width:136px; z-index:42; transform:translate(-50%, -50%) scale(.72);
+    opacity:0; transition:opacity .25s ease, transform .25s ease;
+    pointer-events:none;
+  }
+  .spellPreview.show{opacity:1; transform:translate(-50%, -50%) scale(1)}
+
+  .modalOverlay{
+    position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(6,10,22,.72); z-index:60; padding:20px;
+  }
+  .modalOverlay.show{display:flex}
+  .modalBox{
+    width:min(560px,100%); background:rgba(18,24,45,.96); border:1px solid rgba(255,255,255,.12);
+    border-radius:24px; padding:24px; box-shadow:0 20px 45px rgba(0,0,0,.45); text-align:center;
+  }
+  .modalTitle{font-size:34px; font-weight:900; color:#fff1b4; margin-bottom:12px}
+  .modalText{font-size:18px; color:#d4def8; line-height:1.5; margin-bottom:18px}
+  .modalButtons{display:flex; gap:12px; justify-content:center; flex-wrap:wrap}
 
   @media (max-width:1100px){.board{grid-template-columns:1fr}}
-
 </style>
 </head>
 <body>
 <div class="turnGlow" id="turnGlow"></div>
 <div class="turnBanner" id="turnBannerVisual">Your Turn</div>
-<div class="attackLayer" id="attackLayer"></div>
+<div class="effectLayer" id="effectLayer"></div>
+
+<div class="modalOverlay" id="endModal">
+  <div class="modalBox">
+    <div class="modalTitle" id="endModalTitle">Player 1 wins!</div>
+    <div class="modalText" id="endModalText">This duel is over. You can start a rematch in the same room.</div>
+    <div class="modalButtons">
+      <button id="rematchBtn" class="good">Rematch</button>
+      <button id="rematchCloseBtn" class="secondary">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
   <div id="menuScreen" class="screen">
     <h1>Simple Online Duel</h1>
-    <p>Fastest setup: one person creates a room, the other joins with the room code.</p>
+    <p>One person creates a room, the other joins with the room code.</p>
     <input id="nameInput" placeholder="Your name" maxlength="20">
     <div class="rowButtons">
       <button id="createBtn" class="good">Create Room</button>
@@ -200,13 +205,12 @@
         <div class="panel">
           <div class="sectionTitle">Actions</div>
           <div class="controls">
-            <button id="drawBtn" class="good" style="display:none;">Auto Draw</button>
             <button id="summonBtn">Summon / Cast</button>
             <button id="switchBtn" class="secondary">Switch Stance</button>
             <button id="attackBtn" class="warn">Attack</button>
-            <button id="endTurnBtn" class="secondary" style="grid-column:1 / -1;">End Turn</button>
+            <button id="endTurnBtn" class="secondary">End Turn</button>
           </div>
-          <p class="smallText" style="margin-top:12px;">This is the easiest real online version: two players, one room code, browser sync through a tiny server. Turn draw is automatic, and attacks now have visual slashes.</p>
+          <p class="smallText" style="margin-top:12px;">Auto draw happens at the start of each turn. Spells now appear on the field briefly before their effect happens.</p>
         </div>
 
         <div class="panel">
@@ -259,7 +263,8 @@ const artByName = {
   "Aqua Serpent": ART.aquaSerpent,
   "Fireball": ART.fireball,
   "Healing Light": ART.healing,
-  "Lightning Burst": ART.lightning
+  "Lightning Burst": ART.lightning,
+  "Hidden Card": ART.fireball
 };
 
 let roomCode = "";
@@ -267,6 +272,8 @@ let selectedHand = null;
 let selectedMyField = null;
 let selectedOppField = null;
 let latestState = null;
+let seenTurnKey = "";
+let rematchRequested = false;
 
 const menuScreen = document.getElementById("menuScreen");
 const waitingScreen = document.getElementById("waitingScreen");
@@ -297,6 +304,18 @@ document.getElementById("joinBtn").onclick = () => {
   socket.emit("joinRoom", { roomCode: code, name });
 };
 
+document.getElementById("rematchBtn").onclick = () => {
+  if(!roomCode) return;
+  rematchRequested = true;
+  socket.emit("action", { roomCode, type:"rematch" });
+  document.getElementById("endModalText").textContent = "Rematch requested. Waiting for the other player...";
+  document.getElementById("rematchBtn").disabled = true;
+};
+
+document.getElementById("rematchCloseBtn").onclick = () => {
+  document.getElementById("endModal").classList.remove("show");
+};
+
 socket.on("roomCreated", ({ roomCode: code }) => {
   roomCode = code;
   document.getElementById("roomCodeText").textContent = code;
@@ -319,27 +338,63 @@ socket.on("errorMessage", (msg) => {
   alert(msg);
 });
 
-socket.on("turnStarted", ({ playerName, autoDrawCardName, isYou }) => {
+socket.on("turnStarted", ({ playerName, isYou }) => {
   showTurnVisual(isYou ? "Your Turn" : playerName + "'s Turn");
-  if(autoDrawCardName){
-    const logBox = document.getElementById("log");
-    const item = document.createElement("div");
-    item.className = "logItem";
-    item.textContent = playerName + " drew a card automatically at turn start.";
-    if(logBox) logBox.prepend(item);
-  }
+});
+
+socket.on("rematchRequested", ({ byName }) => {
+  const title = document.getElementById("endModalTitle");
+  const text = document.getElementById("endModalText");
+  title.textContent = "Rematch Offer";
+  text.textContent = byName + " wants a rematch. Click rematch to accept.";
+  document.getElementById("rematchBtn").disabled = rematchRequested;
+  document.getElementById("endModal").classList.add("show");
+});
+
+socket.on("rematchStarted", () => {
+  rematchRequested = false;
+  selectedHand = null;
+  selectedMyField = null;
+  selectedOppField = null;
+  document.getElementById("endModal").classList.remove("show");
+  document.getElementById("rematchBtn").disabled = false;
+  showTurnVisual("Rematch!");
 });
 
 socket.on("attackVisual", async ({ attackerOwner, attackerIndex, targetIndex, direct }) => {
   const from = getCardCenter(attackerOwner === "me" ? "mine" : "opp", attackerIndex);
-  const to = direct ? (attackerOwner === "me" ? getDirectTargetPoint() : (() => {
-    const pill = document.getElementById("meLP");
-    const rect = pill.getBoundingClientRect();
-    return { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-  })()) : getCardCenter(attackerOwner === "me" ? "opp" : "mine", targetIndex);
-  await animateAttack(from, to);
+  let to;
+  if(direct){
+    if(attackerOwner === "me"){
+      to = getLpPoint("oppLP");
+    } else {
+      to = getLpPoint("meLP");
+    }
+  } else {
+    to = getCardCenter(attackerOwner === "me" ? "opp" : "mine", targetIndex);
+  }
+  await animateBeam(from, to, "slash");
 });
 
+socket.on("spellVisual", async ({ casterOwner, cardName, effect, value, targetIndex }) => {
+  const side = casterOwner === "me" ? "mine" : "opp";
+  const center = getRowCenter(side);
+  await showSpellPreview(cardName, center.x, center.y);
+
+  if(effect === "damage"){
+    const lpId = casterOwner === "me" ? "oppLP" : "meLP";
+    await animateBeam(center, getLpPoint(lpId), "slash");
+    await floatLp(lpId, "-" + value, "minus");
+  } else if(effect === "heal"){
+    const lpId = casterOwner === "me" ? "meLP" : "oppLP";
+    await pulseHeal(lpId);
+    await floatLp(lpId, "+" + value, "plus");
+  } else if(effect === "destroy"){
+    const sideTarget = casterOwner === "me" ? "opp" : "mine";
+    const targetPoint = getCardCenter(sideTarget, targetIndex);
+    await animateBeam(center, targetPoint, "lightning");
+  }
+});
 
 socket.on("state", (state) => {
   latestState = state;
@@ -353,7 +408,7 @@ function render(){
   document.getElementById("meLP").textContent = latestState.me.lp;
   document.getElementById("meLabel").textContent = latestState.youName + " LP";
   document.getElementById("oppLabel").textContent = latestState.oppName + " LP";
-  document.getElementById("turnInfo").textContent = roomCode + " / " + (latestState.yourTurn ? "Your Turn" : "Opponent Turn");
+  document.getElementById("turnInfo").textContent = roomCode + " / " + (latestState.yourTurn ? "Your Turn" : latestState.turnPlayerName + "'s Turn");
 
   renderField("oppField", latestState.opp.field, false);
   renderField("meField", latestState.me.field, true);
@@ -361,7 +416,7 @@ function render(){
 
   const logBox = document.getElementById("log");
   logBox.innerHTML = "";
-  [...latestState.log].reverse().forEach(text => {
+  [...latestState.log].slice().reverse().forEach(text => {
     const item = document.createElement("div");
     item.className = "logItem";
     item.textContent = text;
@@ -370,7 +425,14 @@ function render(){
 
   if(latestState.winner){
     document.getElementById("hintBox").textContent = "Game finished: " + latestState.winner;
+    document.getElementById("endModalTitle").textContent = latestState.winner;
+    document.getElementById("endModalText").textContent = rematchRequested
+      ? "Rematch requested. Waiting for the other player..."
+      : "This duel is over and cannot continue. Start a rematch in the same room.";
+    document.getElementById("rematchBtn").disabled = rematchRequested;
+    document.getElementById("endModal").classList.add("show");
   } else {
+    document.getElementById("endModal").classList.remove("show");
     document.getElementById("hintBox").textContent = latestState.yourTurn
       ? "Your move. Your card for the turn was drawn automatically. Summon/cast, switch stance, attack, then end turn."
       : "Waiting for opponent...";
@@ -381,7 +443,7 @@ function render(){
   const turnKey = roomCode + "|" + (latestState.turnPlayerName || "") + "|" + (latestState.turnCount || "") + "|" + (latestState.yourTurn ? "me" : "opp");
   if(turnKey !== seenTurnKey){
     seenTurnKey = turnKey;
-    showTurnVisual(latestState.yourTurn ? "Your Turn" : (latestState.turnPlayerName ? latestState.turnPlayerName + "'s Turn" : "Opponent Turn"));
+    showTurnVisual(latestState.yourTurn ? "Your Turn" : latestState.turnPlayerName + "'s Turn");
   }
 }
 
@@ -392,7 +454,9 @@ function renderField(id, field, isMine){
     const zone = document.createElement("div");
     zone.className = "zone" + (!card ? " empty" : "");
     if(card){
-      const el = cardElement(card); el.dataset.fieldSide = isMine ? "mine" : "opp"; el.dataset.fieldIndex = idx;
+      const el = cardElement(card);
+      el.dataset.fieldSide = isMine ? "mine" : "opp";
+      el.dataset.fieldIndex = idx;
       if(isMine && selectedMyField === idx) el.classList.add("selected");
       if(!isMine && selectedOppField === idx) el.classList.add("selected");
       if(card.position === "defense") el.classList.add("defense");
@@ -452,100 +516,19 @@ function spellText(card){
   return "";
 }
 
-
-let seenTurnKey = "";
-
-function showTurnVisual(text){
-  const banner = document.getElementById("turnBannerVisual");
-  const glow = document.getElementById("turnGlow");
-  banner.textContent = text;
-  banner.classList.add("show");
-  glow.classList.add("show");
-  setTimeout(() => banner.classList.remove("show"), 1600);
-  setTimeout(() => glow.classList.remove("show"), 1800);
-}
-
-function getCardCenter(side, index){
-  const el = document.querySelector(`.card[data-field-side="${side}"][data-field-index="${index}"]`);
-  if(!el) return null;
-  const rect = el.getBoundingClientRect();
-  return { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-}
-
-function getDirectTargetPoint(){
-  const pill = document.getElementById("oppLP");
-  const rect = pill.getBoundingClientRect();
-  return { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-}
-
-function animateAttack(from, to){
-  return new Promise(resolve => {
-    const layer = document.getElementById("attackLayer");
-    if(!from || !to || !layer){ resolve(); return; }
-
-    const slash = document.createElement("div");
-    slash.className = "attackSlash";
-    const impact = document.createElement("div");
-    impact.className = "attackImpact";
-
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-
-    slash.style.left = from.x + "px";
-    slash.style.top = from.y + "px";
-    slash.style.width = dist + "px";
-    slash.style.transform = `rotate(${angle}deg) scaleX(.15)`;
-    slash.style.opacity = "1";
-    slash.style.transition = "transform .32s ease, opacity .18s ease";
-
-    impact.style.left = to.x + "px";
-    impact.style.top = to.y + "px";
-    impact.style.transition = "transform .24s ease, opacity .24s ease";
-
-    layer.appendChild(slash);
-    layer.appendChild(impact);
-
-    requestAnimationFrame(() => {
-      slash.style.transform = `rotate(${angle}deg) scaleX(1)`;
-      impact.style.opacity = "1";
-      impact.style.transform = "scale(1)";
-    });
-
-    setTimeout(() => {
-      slash.style.opacity = "0";
-      impact.style.opacity = "0";
-      impact.style.transform = "scale(1.5)";
-    }, 260);
-
-    setTimeout(() => {
-      slash.remove();
-      impact.remove();
-      resolve();
-    }, 620);
-  });
-}
-
-
 function sendAction(type, extra = {}){
   if(!roomCode) return;
   socket.emit("action", { roomCode, type, ...extra });
 }
 
 function updateButtons(){
-  const handCard = latestState?.me?.hand?.[selectedHand];
   const fieldCard = latestState?.me?.field?.[selectedMyField];
   const yourTurn = latestState?.yourTurn && !latestState?.winner;
-
-  document.getElementById("drawBtn").disabled = true;
   document.getElementById("summonBtn").disabled = !yourTurn || selectedHand === null;
   document.getElementById("switchBtn").disabled = !yourTurn || !fieldCard || fieldCard.type !== "monster" || fieldCard.switchedThisTurn;
   document.getElementById("attackBtn").disabled = !yourTurn || !fieldCard || fieldCard.type !== "monster" || fieldCard.position !== "attack" || fieldCard.hasAttacked;
   document.getElementById("endTurnBtn").disabled = !yourTurn;
 }
-
-document.getElementById("drawBtn").onclick = () => {};
 
 document.getElementById("summonBtn").onclick = () => {
   const card = latestState?.me?.hand?.[selectedHand];
@@ -570,16 +553,10 @@ document.getElementById("attackBtn").onclick = async () => {
     alert("Select an opponent monster first.");
     return;
   }
-
   const from = getCardCenter("mine", selectedMyField);
-  const to = oppHasCards ? getCardCenter("opp", selectedOppField) : getDirectTargetPoint();
-
-  await animateAttack(from, to);
-
-  sendAction("attack", {
-    attackerIndex: selectedMyField,
-    targetIndex: selectedOppField
-  });
+  const to = oppHasCards ? getCardCenter("opp", selectedOppField) : getLpPoint("oppLP");
+  await animateBeam(from, to, "slash");
+  sendAction("attack", { attackerIndex: selectedMyField, targetIndex: selectedOppField });
   selectedOppField = null;
 };
 
@@ -589,6 +566,173 @@ document.getElementById("endTurnBtn").onclick = () => {
   selectedOppField = null;
   sendAction("endTurn");
 };
+
+function showTurnVisual(text){
+  const banner = document.getElementById("turnBannerVisual");
+  const glow = document.getElementById("turnGlow");
+  banner.textContent = text;
+  banner.classList.add("show");
+  glow.classList.add("show");
+  setTimeout(() => banner.classList.remove("show"), 1500);
+  setTimeout(() => glow.classList.remove("show"), 1700);
+}
+
+function getCardCenter(side, index){
+  const el = document.querySelector(`.card[data-field-side="${side}"][data-field-index="${index}"]`);
+  if(!el) return null;
+  const rect = el.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+function getRowCenter(side){
+  const row = document.getElementById(side === "mine" ? "meField" : "oppField");
+  const rect = row.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+function getLpPoint(id){
+  const el = document.getElementById(id);
+  const rect = el.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+function wait(ms){
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function animateBeam(from, to, kind){
+  return new Promise(resolve => {
+    if(!from || !to){
+      resolve();
+      return;
+    }
+    const layer = document.getElementById("effectLayer");
+
+    if(kind === "lightning"){
+      const bolt = document.createElement("div");
+      bolt.className = "lightning";
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      bolt.style.left = from.x + "px";
+      bolt.style.top = from.y + "px";
+      bolt.style.height = dist + "px";
+      bolt.style.transformOrigin = "top center";
+      bolt.style.transform = `rotate(${angle+90}deg) scaleY(.1)`;
+      bolt.style.transition = "transform .24s ease, opacity .18s ease";
+      layer.appendChild(bolt);
+      requestAnimationFrame(() => {
+        bolt.style.opacity = "1";
+        bolt.style.transform = `rotate(${angle+90}deg) scaleY(1)`;
+      });
+      setTimeout(() => {
+        bolt.style.opacity = "0";
+      }, 220);
+      setTimeout(() => {
+        bolt.remove();
+        resolve();
+      }, 500);
+      return;
+    }
+
+    const beam = document.createElement("div");
+    beam.className = "beam";
+    const impact = document.createElement("div");
+    impact.className = "impact";
+
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+    beam.style.left = from.x + "px";
+    beam.style.top = from.y + "px";
+    beam.style.width = dist + "px";
+    beam.style.transform = `rotate(${angle}deg) scaleX(.15)`;
+    beam.style.transition = "transform .32s ease, opacity .18s ease";
+    beam.style.opacity = "1";
+
+    impact.style.left = to.x + "px";
+    impact.style.top = to.y + "px";
+    impact.style.transition = "transform .24s ease, opacity .24s ease";
+
+    layer.appendChild(beam);
+    layer.appendChild(impact);
+
+    requestAnimationFrame(() => {
+      beam.style.transform = `rotate(${angle}deg) scaleX(1)`;
+      impact.style.opacity = "1";
+      impact.style.transform = "scale(1)";
+    });
+
+    setTimeout(() => {
+      beam.style.opacity = "0";
+      impact.style.opacity = "0";
+      impact.style.transform = "scale(1.5)";
+    }, 260);
+
+    setTimeout(() => {
+      beam.remove();
+      impact.remove();
+      resolve();
+    }, 620);
+  });
+}
+
+async function showSpellPreview(cardName, x, y){
+  const layer = document.getElementById("effectLayer");
+  const card = cardElement({ name: cardName, type:"spell", effect:"damage", value:500, desc:"" });
+  card.classList.add("spellPreview");
+  card.style.left = x + "px";
+  card.style.top = y + "px";
+  layer.appendChild(card);
+  await wait(30);
+  card.classList.add("show");
+  await wait(700);
+  card.classList.remove("show");
+  await wait(250);
+  card.remove();
+}
+
+function pulseHeal(id){
+  return new Promise(resolve => {
+    const el = document.getElementById(id).closest(".pill");
+    const original = el.style.boxShadow;
+    el.style.transition = "box-shadow .25s ease, transform .25s ease";
+    el.style.boxShadow = "0 0 28px rgba(120,255,170,.95)";
+    el.style.transform = "scale(1.06)";
+    setTimeout(() => {
+      el.style.boxShadow = original;
+      el.style.transform = "scale(1)";
+    }, 320);
+    setTimeout(resolve, 620);
+  });
+}
+
+function floatLp(id, text, type){
+  return new Promise(resolve => {
+    const point = getLpPoint(id);
+    const node = document.createElement("div");
+    node.className = "lpFloat " + type;
+    node.textContent = text;
+    node.style.left = (point.x - 20) + "px";
+    node.style.top = (point.y - 18) + "px";
+    node.style.transition = "transform .75s ease, opacity .75s ease";
+    document.getElementById("effectLayer").appendChild(node);
+    requestAnimationFrame(() => {
+      node.style.opacity = "1";
+      node.style.transform = "translateY(-36px)";
+    });
+    setTimeout(() => {
+      node.style.opacity = "0";
+    }, 450);
+    setTimeout(() => {
+      node.remove();
+      resolve();
+    }, 850);
+  });
+}
 </script>
 </body>
 </html>
