@@ -136,18 +136,17 @@ function blankPlayer(name) {
 }
 
 function drawCard(player) {
-  if (player.deck.length === 0) {
-    return null;
-  }
+  if (player.deck.length === 0) return null;
 
   const card = player.deck.shift();
-  player.hand.push({
+  const drawn = {
     ...card,
     position: "attack",
     hasAttacked: false,
     switchedThisTurn: false
-  });
-  return card;
+  };
+  player.hand.push(drawn);
+  return drawn;
 }
 
 function opponentIndex(i) {
@@ -158,16 +157,20 @@ function currentPlayer(room) {
   return room.players[room.currentTurn];
 }
 
+function otherPlayer(room) {
+  return room.players[opponentIndex(room.currentTurn)];
+}
+
 function log(room, text) {
   room.log.push(text);
-  if (room.log.length > 40) {
+  if (room.log.length > 50) {
     room.log.shift();
   }
 }
 
 function resetTurnState(player) {
   player.summonUsed = false;
-  player.drew = true; // auto draw is already done
+  player.drew = true; // auto draw already happened
   player.field.forEach(card => {
     if (card) {
       card.hasAttacked = false;
@@ -176,13 +179,19 @@ function resetTurnState(player) {
   });
 }
 
-function checkWinner(room) {
-  if (room.players[0].lp <= 0 && room.players[1].lp <= 0) {
-    room.winner = "Draw!";
-  } else if (room.players[0].lp <= 0) {
-    room.winner = room.players[1].name + " wins!";
-  } else if (room.players[1].lp <= 0) {
-    room.winner = room.players[0].name + " wins!";
+function getWinnerText(room) {
+  if (room.players[0].lp <= 0 && room.players[1].lp <= 0) return "Draw!";
+  if (room.players[0].lp <= 0) return room.players[1].name + " wins!";
+  if (room.players[1].lp <= 0) return room.players[0].name + " wins!";
+  return "";
+}
+
+function finishGame(room) {
+  room.winner = getWinnerText(room);
+  if (room.winner) {
+    io.to(room.code).emit("gameOver", {
+      winner: room.winner
+    });
   }
 }
 
@@ -196,7 +205,7 @@ function visibleState(room, seat) {
       ...opp,
       hand: Array.from({ length: opp.hand.length }, () => ({
         name: "Hidden Card",
-        type: "spell",
+        type: "hidden",
         desc: "Opponent hand"
       }))
     },
@@ -219,12 +228,33 @@ function emitState(room) {
   });
 }
 
-function startGame(room) {
-  room.started = true;
+function emitTurnStarted(room, playerIndex, drawnCard) {
+  const playerName = room.players[playerIndex].name;
+
+  io.to(room.sockets[playerIndex]).emit("turnStarted", {
+    playerName,
+    autoDrawCardName: drawnCard ? drawnCard.name : "",
+    isYou: true
+  });
+
+  io.to(room.sockets[opponentIndex(playerIndex)]).emit("turnStarted", {
+    playerName,
+    autoDrawCardName: drawnCard ? drawnCard.name : "",
+    isYou: false
+  });
+}
+
+function setupFreshGame(room) {
+  const p1Name = room.players[0].name;
+  const p2Name = room.players[1].name;
+
+  room.players[0] = blankPlayer(p1Name);
+  room.players[1] = blankPlayer(p2Name);
   room.currentTurn = 0;
   room.turnCount = 1;
   room.log = [];
   room.winner = "";
+  room.rematchVotes = [false, false];
 
   room.players.forEach(player => {
     for (let i = 0; i < 5; i++) {
@@ -236,6 +266,10 @@ function startGame(room) {
   if (firstDraw) {
     log(room, room.players[0].name + " drew a card automatically for the first turn.");
   }
+}
+
+function startGame(room) {
+  setupFreshGame(room);
 }
 
 function startNextTurn(room) {
@@ -252,50 +286,76 @@ function startNextTurn(room) {
     log(room, player.name + " drew a card automatically at turn start.");
   } else {
     player.lp = 0;
-    checkWinner(room);
+    finishGame(room);
   }
 
-  if (room.sockets[room.currentTurn]) {
-    io.to(room.sockets[room.currentTurn]).emit("turnStarted", {
-      playerName: player.name,
-      autoDrawCardName: drawn ? drawn.name : "",
-      isYou: true
-    });
-  }
-
-  if (room.sockets[opponentIndex(room.currentTurn)]) {
-    io.to(room.sockets[opponentIndex(room.currentTurn)]).emit("turnStarted", {
-      playerName: player.name,
-      autoDrawCardName: drawn ? drawn.name : "",
-      isYou: false
-    });
-  }
+  emitTurnStarted(room, room.currentTurn, drawn);
 }
 
-function castSpell(room, me, foe, handIndex) {
+function castSpell(room, me, foe, handIndex, seat) {
   const card = me.hand[handIndex];
   if (!card || card.type !== "spell") return;
 
-  me.hand.splice(handIndex, 1);
+  const freeZone = me.field.findIndex(zone => zone === null);
+  if (freeZone === -1) {
+    log(room, me.name + " tried to cast " + card.name + " but the field was full.");
+    return;
+  }
 
-  if (card.effect === "damage") {
-    foe.lp -= card.value;
-    log(room, me.name + " cast " + card.name + " and dealt " + card.value + " damage.");
-  } else if (card.effect === "heal") {
-    me.lp += card.value;
-    log(room, me.name + " cast " + card.name + " and recovered " + card.value + " LP.");
-  } else if (card.effect === "destroy") {
+  const spellCard = {
+    ...card,
+    position: "attack",
+    hasAttacked: true,
+    switchedThisTurn: true,
+    tempSpell: true
+  };
+
+  me.hand.splice(handIndex, 1);
+  me.field[freeZone] = spellCard;
+
+  log(room, me.name + " activated " + spellCard.name + ".");
+
+  io.to(room.sockets[seat]).emit("spellVisual", {
+    owner: "me",
+    zoneIndex: freeZone,
+    effect: spellCard.effect,
+    value: spellCard.value || 0,
+    targetIndex:
+      spellCard.effect === "destroy"
+        ? foe.field.findIndex(cardOnField => cardOnField !== null)
+        : null
+  });
+
+  io.to(room.sockets[opponentIndex(seat)]).emit("spellVisual", {
+    owner: "opp",
+    zoneIndex: freeZone,
+    effect: spellCard.effect,
+    value: spellCard.value || 0,
+    targetIndex:
+      spellCard.effect === "destroy"
+        ? foe.field.findIndex(cardOnField => cardOnField !== null)
+        : null
+  });
+
+  if (spellCard.effect === "damage") {
+    foe.lp -= spellCard.value;
+    log(room, me.name + "'s " + spellCard.name + " dealt " + spellCard.value + " damage.");
+  } else if (spellCard.effect === "heal") {
+    me.lp += spellCard.value;
+    log(room, me.name + "'s " + spellCard.name + " restored " + spellCard.value + " LP.");
+  } else if (spellCard.effect === "destroy") {
     const targetIndex = foe.field.findIndex(cardOnField => cardOnField !== null);
     if (targetIndex !== -1) {
       const destroyed = foe.field[targetIndex];
       foe.field[targetIndex] = null;
-      log(room, me.name + " cast " + card.name + " and destroyed " + destroyed.name + ".");
+      log(room, me.name + "'s " + spellCard.name + " destroyed " + destroyed.name + ".");
     } else {
-      log(room, me.name + " cast " + card.name + ", but there was no target.");
+      log(room, me.name + "'s " + spellCard.name + " had no target.");
     }
   }
 
-  checkWinner(room);
+  me.field[freeZone] = null;
+  finishGame(room);
 }
 
 function doBattle(room, me, foe, attackerIndex, targetIndex) {
@@ -307,12 +367,15 @@ function doBattle(room, me, foe, attackerIndex, targetIndex) {
 
   attacker.hasAttacked = true;
 
-  const directAttack = targetIndex === null || targetIndex === undefined || !foe.field[targetIndex];
+  const directAttack =
+    targetIndex === null ||
+    targetIndex === undefined ||
+    !foe.field[targetIndex];
 
   if (directAttack) {
     foe.lp -= attacker.atk;
     log(room, me.name + "'s " + attacker.name + " attacked directly for " + attacker.atk + " damage!");
-    checkWinner(room);
+    finishGame(room);
     return;
   }
 
@@ -348,7 +411,7 @@ function doBattle(room, me, foe, attackerIndex, targetIndex) {
     }
   }
 
-  checkWinner(room);
+  finishGame(room);
 }
 
 io.on("connection", (socket) => {
@@ -363,7 +426,8 @@ io.on("connection", (socket) => {
       currentTurn: 0,
       turnCount: 1,
       log: [],
-      winner: ""
+      winner: "",
+      rematchVotes: [false, false]
     };
 
     rooms.set(code, room);
@@ -387,7 +451,6 @@ io.on("connection", (socket) => {
 
     room.players[1] = blankPlayer(name || "Player 2");
     room.sockets[1] = socket.id;
-
     socket.join(roomCode);
 
     startGame(room);
@@ -396,29 +459,35 @@ io.on("connection", (socket) => {
     io.to(room.sockets[1]).emit("gameStarted", { roomCode });
 
     emitState(room);
-
-    io.to(room.sockets[0]).emit("turnStarted", {
-      playerName: room.players[0].name,
-      autoDrawCardName: "",
-      isYou: true
-    });
-
-    io.to(room.sockets[1]).emit("turnStarted", {
-      playerName: room.players[0].name,
-      autoDrawCardName: "",
-      isYou: false
-    });
+    emitTurnStarted(room, 0, null);
   });
 
   socket.on("action", ({ roomCode, type, ...payload }) => {
     const room = rooms.get(roomCode);
-    if (!room || room.winner) return;
+    if (!room) return;
 
     const seat =
       room.sockets[0] === socket.id ? 0 :
       room.sockets[1] === socket.id ? 1 : -1;
 
     if (seat === -1) return;
+
+    if (type === "rematch") {
+      room.rematchVotes[seat] = true;
+      io.to(room.code).emit("rematchStatus", {
+        votes: [...room.rematchVotes]
+      });
+
+      if (room.rematchVotes[0] && room.rematchVotes[1]) {
+        setupFreshGame(room);
+        io.to(room.code).emit("rematchStarted");
+        emitState(room);
+        emitTurnStarted(room, 0, null);
+      }
+      return;
+    }
+
+    if (room.winner) return;
     if (seat !== room.currentTurn) return;
 
     const me = room.players[seat];
@@ -445,7 +514,7 @@ io.on("connection", (socket) => {
     }
 
     else if (type === "cast") {
-      castSpell(room, me, foe, payload.handIndex);
+      castSpell(room, me, foe, payload.handIndex, seat);
     }
 
     else if (type === "switch") {
@@ -494,14 +563,17 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    for (const [code, room] of rooms.entries()) {
+    for (const room of rooms.values()) {
       const idx = room.sockets.findIndex(id => id === socket.id);
-      if (idx !== -1) {
+      if (idx !== -1 && !room.winner) {
         const otherIdx = opponentIndex(idx);
         if (room.players[otherIdx]) {
           room.winner = room.players[otherIdx].name + " wins! Opponent disconnected.";
+          io.to(room.code).emit("gameOver", {
+            winner: room.winner
+          });
+          emitState(room);
         }
-        emitState(room);
       }
     }
   });
