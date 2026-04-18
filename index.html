@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simple Online Duel</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  :root{
+    --bg1:#0b1220; --bg2:#1a2340; --panel:rgba(255,255,255,0.08); --line:rgba(255,255,255,0.14);
+    --gold:#e7c56d; --muted:#b8c2d9; --text:#f5f7fb;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:Arial, Helvetica, sans-serif; color:var(--text);
+    background:radial-gradient(circle at top left, #223467 0%, transparent 28%), radial-gradient(circle at bottom right, #47235f 0%, transparent 25%), linear-gradient(160deg, var(--bg1), var(--bg2));
+    min-height:100vh;
+  }
+  .wrap{max-width:1400px; margin:0 auto; padding:16px}
+  .screen, .arena, .panel{background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:16px; box-shadow:0 12px 30px rgba(0,0,0,.28)}
+  .screen{max-width:640px; margin:48px auto}
+  h1,h2{margin-top:0; color:#fff1b4}
+  input{
+    width:100%; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.08); color:white; margin-bottom:12px;
+  }
+  button{
+    border:none; border-radius:14px; padding:12px 14px; font-weight:700; cursor:pointer; color:#fff;
+    background:linear-gradient(180deg,#5e8cff,#365fd9); box-shadow:0 8px 18px rgba(31,72,180,.35);
+  }
+  button.secondary{background:linear-gradient(180deg,#6a6f84,#474d62); box-shadow:none}
+  button.warn{background:linear-gradient(180deg,#ff9987,#df5a48)}
+  button.good{background:linear-gradient(180deg,#6ee39d,#2f9d5f)}
+  button:disabled{opacity:.45; cursor:not-allowed}
+  .rowButtons{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+  .topbar{display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-bottom:16px}
+  .title{font-size:28px; font-weight:800; color:#fff6d6}
+  .hud{display:flex; gap:12px; flex-wrap:wrap}
+  .pill{background:var(--panel); border:1px solid var(--line); padding:10px 14px; border-radius:14px; min-width:150px}
+  .pill .label{color:var(--muted); font-size:12px; margin-bottom:4px}
+  .pill .value{font-size:22px; font-weight:700}
+  .board{display:grid; grid-template-columns:1.15fr 360px; gap:16px}
+  .sidebar{display:flex; flex-direction:column; gap:16px}
+  .fieldLabel{font-size:14px; color:var(--muted); margin:8px 0 6px}
+  .row{display:grid; grid-template-columns:repeat(5,minmax(100px,1fr)); gap:12px; min-height:190px; margin-bottom:14px}
+  .zone{border:1px dashed rgba(255,255,255,0.18); border-radius:18px; min-height:180px; display:flex; align-items:center; justify-content:center; padding:6px; position:relative; background:rgba(255,255,255,0.03)}
+  .zone.empty::after{content:"Empty"; color:rgba(255,255,255,.28); font-size:14px}
+  .hand{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px}
+  .card{width:100%; height:168px; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,0.25); box-shadow:0 10px 22px rgba(0,0,0,.35); display:flex; flex-direction:column; cursor:pointer; transition:transform .15s ease, box-shadow .15s ease, outline .15s ease; position:relative}
+  .card:hover{transform:translateY(-3px)}
+  .card.selected{outline:3px solid var(--gold)}
+  .card.used{opacity:.55; filter:saturate(.7)}
+  .card.defense{transform:rotate(90deg) scale(.8); transform-origin:center center}
+  .monsterCard{background:linear-gradient(180deg,#e6b76a,#d9943c 55%,#c37728)}
+  .spellCard{background:linear-gradient(180deg,#7de5c8,#25a88f 58%,#1c7766)}
+  .cardHeader{padding:6px 8px 4px; font-weight:700; font-size:13px; display:flex; justify-content:space-between; color:#1f1707}
+  .stars{font-size:12px; letter-spacing:1px; color:#7a5600}
+  .art{margin:0 6px; height:72px; border-radius:10px; border:1px solid rgba(0,0,0,0.18); background-size:cover; background-position:center}
+  .typeLine{font-size:11px; font-weight:700; padding:5px 8px 2px; color:#292929}
+  .desc{padding:0 8px; font-size:10px; line-height:1.2; color:#2b2b2b; flex:1; overflow:hidden}
+  .stats{padding:6px 8px 8px; font-size:12px; font-weight:800; display:flex; justify-content:flex-end; color:#231c0f}
+  .controls{display:grid; grid-template-columns:repeat(2,1fr); gap:10px}
+  #log{max-height:360px; overflow:auto; display:flex; flex-direction:column; gap:8px}
+  .logItem{background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:8px 10px; font-size:13px}
+  .status{margin:10px 0 0; color:#d9e5ff}
+  .hidden{display:none}
+  .hint{margin-top:10px; font-size:13px; color:#d9e5ff; background:rgba(114,159,255,.12); border:1px solid rgba(114,159,255,.25); border-radius:12px; padding:10px}
+  .smallText{color:var(--muted); font-size:13px; line-height:1.45}
+  .sectionTitle{font-size:18px; font-weight:700; margin:0 0 12px 0; color:#fff0b5}
+  @media (max-width:1100px){.board{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="menuScreen" class="screen">
+    <h1>Simple Online Duel</h1>
+    <p>Fastest setup: one person creates a room, the other joins with the room code.</p>
+    <input id="nameInput" placeholder="Your name" maxlength="20">
+    <div class="rowButtons">
+      <button id="createBtn" class="good">Create Room</button>
+      <button id="joinBtn">Join Room</button>
+    </div>
+    <input id="roomInput" placeholder="Room code for joining" maxlength="4" style="margin-top:12px;">
+    <div class="status" id="menuStatus"></div>
+  </div>
+
+  <div id="waitingScreen" class="screen hidden">
+    <h2>Room created</h2>
+    <p>Send this code to your friend:</p>
+    <h1 id="roomCodeText">----</h1>
+    <p>Waiting for the second player to join...</p>
+  </div>
+
+  <div id="gameScreen" class="hidden">
+    <div class="topbar">
+      <div class="title">Simple Online Duel</div>
+      <div class="hud">
+        <div class="pill"><div class="label" id="oppLabel">Opponent LP</div><div class="value" id="oppLP">8000</div></div>
+        <div class="pill"><div class="label" id="meLabel">Your LP</div><div class="value" id="meLP">8000</div></div>
+        <div class="pill"><div class="label">Room / Turn</div><div class="value" id="turnInfo">----</div></div>
+      </div>
+    </div>
+
+    <div class="board">
+      <div class="arena">
+        <div class="fieldLabel">Opponent Field</div>
+        <div class="row" id="oppField"></div>
+
+        <div class="fieldLabel">Your Field</div>
+        <div class="row" id="meField"></div>
+
+        <div class="fieldLabel">Your Hand</div>
+        <div class="hand" id="meHand"></div>
+
+        <div class="hint" id="hintBox">Choose a card from your hand to summon or cast. Choose one of your monsters, then an enemy monster to attack. If the enemy field is empty, you can attack directly.</div>
+      </div>
+
+      <div class="sidebar">
+        <div class="panel">
+          <div class="sectionTitle">Actions</div>
+          <div class="controls">
+            <button id="drawBtn" class="good">Draw</button>
+            <button id="summonBtn">Summon / Cast</button>
+            <button id="switchBtn" class="secondary">Switch Stance</button>
+            <button id="attackBtn" class="warn">Attack</button>
+            <button id="endTurnBtn" class="secondary" style="grid-column:1 / -1;">End Turn</button>
+          </div>
+          <p class="smallText" style="margin-top:12px;">This is the easiest real online version: two players, one room code, browser sync through a tiny server.</p>
+        </div>
+
+        <div class="panel">
+          <div class="sectionTitle">Battle Log</div>
+          <div id="log"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const socket = io();
+
+const ART = {
+  flameDragon: makeArt("Flame Dragon", "#ffb347", "#ff5f6d", "dragon"),
+  stoneGiant: makeArt("Stone Giant", "#d1c7b8", "#7e7466", "giant"),
+  thunderWolf: makeArt("Thunder Wolf", "#8de0ff", "#3f7bff", "wolf"),
+  forestElf: makeArt("Forest Elf", "#afffb5", "#2f8f58", "elf"),
+  shadowBat: makeArt("Shadow Bat", "#c7a6ff", "#49307f", "bat"),
+  lightKnight: makeArt("Light Knight", "#fff0ad", "#cf9a2e", "knight"),
+  aquaSerpent: makeArt("Aqua Serpent", "#7ae8ff", "#0078aa", "serpent"),
+  fireball: makeArt("Fireball", "#ffd29e", "#ff5b3a", "spell"),
+  healing: makeArt("Healing Light", "#d9ffe9", "#41c97f", "spell"),
+  lightning: makeArt("Lightning Burst", "#fff0a8", "#5478ff", "spell")
+};
+
+function makeArt(title, c1, c2, icon){
+  const icons = {dragon:"🐉", giant:"🗿", wolf:"🐺", elf:"🧝", bat:"🦇", knight:"🛡️", serpent:"🐍", spell:"✨"};
+  const svg = `
+  <svg xmlns='http://www.w3.org/2000/svg' width='300' height='180' viewBox='0 0 300 180'>
+    <defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'>
+      <stop offset='0%' stop-color='${c1}'/><stop offset='100%' stop-color='${c2}'/></linearGradient></defs>
+    <rect width='300' height='180' rx='20' fill='url(#g)'/>
+    <circle cx='220' cy='42' r='26' fill='rgba(255,255,255,0.23)'/>
+    <circle cx='65' cy='140' r='42' fill='rgba(255,255,255,0.12)'/>
+    <text x='150' y='106' text-anchor='middle' font-size='72'>${icons[icon] || "✦"}</text>
+    <text x='150' y='28' text-anchor='middle' font-size='18' font-weight='700' fill='rgba(0,0,0,0.55)'>${title}</text>
+  </svg>`;
+  return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+}
+
+const artByName = {
+  "Flame Dragon": ART.flameDragon,
+  "Stone Giant": ART.stoneGiant,
+  "Thunder Wolf": ART.thunderWolf,
+  "Forest Elf": ART.forestElf,
+  "Shadow Bat": ART.shadowBat,
+  "Light Knight": ART.lightKnight,
+  "Aqua Serpent": ART.aquaSerpent,
+  "Fireball": ART.fireball,
+  "Healing Light": ART.healing,
+  "Lightning Burst": ART.lightning
+};
+
+let roomCode = "";
+let selectedHand = null;
+let selectedMyField = null;
+let selectedOppField = null;
+let latestState = null;
+
+const menuScreen = document.getElementById("menuScreen");
+const waitingScreen = document.getElementById("waitingScreen");
+const gameScreen = document.getElementById("gameScreen");
+const menuStatus = document.getElementById("menuStatus");
+
+function showScreen(name){
+  menuScreen.classList.add("hidden");
+  waitingScreen.classList.add("hidden");
+  gameScreen.classList.add("hidden");
+  if(name === "menu") menuScreen.classList.remove("hidden");
+  if(name === "waiting") waitingScreen.classList.remove("hidden");
+  if(name === "game") gameScreen.classList.remove("hidden");
+}
+
+document.getElementById("createBtn").onclick = () => {
+  const name = document.getElementById("nameInput").value.trim() || "Player 1";
+  socket.emit("createRoom", { name });
+};
+
+document.getElementById("joinBtn").onclick = () => {
+  const name = document.getElementById("nameInput").value.trim() || "Player 2";
+  const code = document.getElementById("roomInput").value.trim().toUpperCase();
+  if(code.length !== 4){
+    menuStatus.textContent = "Enter a valid 4-letter room code.";
+    return;
+  }
+  socket.emit("joinRoom", { roomCode: code, name });
+};
+
+socket.on("roomCreated", ({ roomCode: code }) => {
+  roomCode = code;
+  document.getElementById("roomCodeText").textContent = code;
+  showScreen("waiting");
+});
+
+socket.on("waiting", ({ roomCode: code }) => {
+  roomCode = code;
+  document.getElementById("roomCodeText").textContent = code;
+  showScreen("waiting");
+});
+
+socket.on("gameStarted", ({ roomCode: code }) => {
+  roomCode = code;
+  showScreen("game");
+});
+
+socket.on("errorMessage", (msg) => {
+  menuStatus.textContent = msg;
+  alert(msg);
+});
+
+socket.on("state", (state) => {
+  latestState = state;
+  render();
+});
+
+function render(){
+  if(!latestState) return;
+
+  document.getElementById("oppLP").textContent = latestState.opp.lp;
+  document.getElementById("meLP").textContent = latestState.me.lp;
+  document.getElementById("meLabel").textContent = latestState.youName + " LP";
+  document.getElementById("oppLabel").textContent = latestState.oppName + " LP";
+  document.getElementById("turnInfo").textContent = roomCode + " / " + (latestState.yourTurn ? "Your Turn" : "Opponent Turn");
+
+  renderField("oppField", latestState.opp.field, false);
+  renderField("meField", latestState.me.field, true);
+  renderHand("meHand", latestState.me.hand);
+
+  const logBox = document.getElementById("log");
+  logBox.innerHTML = "";
+  [...latestState.log].reverse().forEach(text => {
+    const item = document.createElement("div");
+    item.className = "logItem";
+    item.textContent = text;
+    logBox.appendChild(item);
+  });
+
+  if(latestState.winner){
+    document.getElementById("hintBox").textContent = "Game finished: " + latestState.winner;
+  } else {
+    document.getElementById("hintBox").textContent = latestState.yourTurn
+      ? "Your move. Draw, summon/cast, switch stance, attack, then end turn."
+      : "Waiting for opponent...";
+  }
+
+  updateButtons();
+}
+
+function renderField(id, field, isMine){
+  const holder = document.getElementById(id);
+  holder.innerHTML = "";
+  field.forEach((card, idx) => {
+    const zone = document.createElement("div");
+    zone.className = "zone" + (!card ? " empty" : "");
+    if(card){
+      const el = cardElement(card);
+      if(isMine && selectedMyField === idx) el.classList.add("selected");
+      if(!isMine && selectedOppField === idx) el.classList.add("selected");
+      if(card.position === "defense") el.classList.add("defense");
+      if(card.hasAttacked) el.classList.add("used");
+      el.onclick = () => {
+        if(!latestState.yourTurn || latestState.winner) return;
+        if(isMine){
+          selectedMyField = idx;
+          selectedHand = null;
+        } else {
+          selectedOppField = idx;
+        }
+        render();
+      };
+      zone.appendChild(el);
+    }
+    holder.appendChild(zone);
+  });
+}
+
+function renderHand(id, hand){
+  const holder = document.getElementById(id);
+  holder.innerHTML = "";
+  hand.forEach((card, idx) => {
+    const el = cardElement(card);
+    if(selectedHand === idx) el.classList.add("selected");
+    el.onclick = () => {
+      if(!latestState.yourTurn || latestState.winner) return;
+      selectedHand = idx;
+      selectedMyField = null;
+      selectedOppField = null;
+      render();
+    };
+    holder.appendChild(el);
+  });
+}
+
+function cardElement(card){
+  const el = document.createElement("div");
+  el.className = "card " + (card.type === "monster" ? "monsterCard" : "spellCard");
+  const stars = card.type === "monster" ? "★".repeat(card.level || 1) : "✦";
+  const art = artByName[card.name] || ART.flameDragon;
+  el.innerHTML = `
+    <div class="cardHeader"><div>${card.name}</div><div class="stars">${stars}</div></div>
+    <div class="art" style="background-image:${art};"></div>
+    <div class="typeLine">[ ${card.type === "monster" ? "Monster" : "Spell"} ] ${card.type === "monster" ? " - " + (card.position === "defense" ? "DEFENSE" : "ATTACK") : ""}</div>
+    <div class="desc">${card.desc || ""}</div>
+    <div class="stats">${card.type === "monster" ? `ATK ${card.atk} / DEF ${card.def}` : spellText(card)}</div>
+  `;
+  return el;
+}
+
+function spellText(card){
+  if(card.effect === "damage") return "DMG " + card.value;
+  if(card.effect === "heal") return "HEAL " + card.value;
+  if(card.effect === "destroy") return "DESTROY";
+  return "";
+}
+
+function sendAction(type, extra = {}){
+  if(!roomCode) return;
+  socket.emit("action", { roomCode, type, ...extra });
+}
+
+function updateButtons(){
+  const handCard = latestState?.me?.hand?.[selectedHand];
+  const fieldCard = latestState?.me?.field?.[selectedMyField];
+  const yourTurn = latestState?.yourTurn && !latestState?.winner;
+
+  document.getElementById("drawBtn").disabled = !yourTurn || latestState.me.drew;
+  document.getElementById("summonBtn").disabled = !yourTurn || selectedHand === null;
+  document.getElementById("switchBtn").disabled = !yourTurn || !fieldCard || fieldCard.type !== "monster" || fieldCard.switchedThisTurn;
+  document.getElementById("attackBtn").disabled = !yourTurn || !fieldCard || fieldCard.type !== "monster" || fieldCard.position !== "attack" || fieldCard.hasAttacked;
+  document.getElementById("endTurnBtn").disabled = !yourTurn;
+}
+
+document.getElementById("drawBtn").onclick = () => sendAction("draw");
+
+document.getElementById("summonBtn").onclick = () => {
+  const card = latestState?.me?.hand?.[selectedHand];
+  if(!card) return;
+  if(card.type === "monster"){
+    sendAction("summon", { handIndex: selectedHand });
+  } else {
+    sendAction("cast", { handIndex: selectedHand });
+  }
+  selectedHand = null;
+};
+
+document.getElementById("switchBtn").onclick = () => {
+  if(selectedMyField === null) return;
+  sendAction("switch", { fieldIndex: selectedMyField });
+};
+
+document.getElementById("attackBtn").onclick = () => {
+  if(selectedMyField === null) return;
+  const oppHasCards = latestState.opp.field.some(Boolean);
+  if(oppHasCards && selectedOppField === null){
+    alert("Select an opponent monster first.");
+    return;
+  }
+  sendAction("attack", {
+    attackerIndex: selectedMyField,
+    targetIndex: selectedOppField
+  });
+  selectedOppField = null;
+};
+
+document.getElementById("endTurnBtn").onclick = () => {
+  selectedHand = null;
+  selectedMyField = null;
+  selectedOppField = null;
+  sendAction("endTurn");
+};
+</script>
+</body>
+</html>
